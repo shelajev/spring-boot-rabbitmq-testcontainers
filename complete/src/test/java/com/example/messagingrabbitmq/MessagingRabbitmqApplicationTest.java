@@ -16,7 +16,9 @@
 
 package com.example.messagingrabbitmq;
 
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
 
@@ -25,12 +27,46 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.ApplicationContextInitializer;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.core.env.MapPropertySource;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.RabbitMQContainer;
+import org.testcontainers.lifecycle.Startables;
+import org.testcontainers.utility.DockerImageName;
 
 @SpringBootTest
+@ContextConfiguration(initializers = MessagingRabbitmqApplicationTest.Initializer.class)
 public class MessagingRabbitmqApplicationTest {
 
-	@MockBean
-	private Runner runner;
+	public static class Initializer
+		implements ApplicationContextInitializer<ConfigurableApplicationContext> {
+
+		static RabbitMQContainer rabbit = new RabbitMQContainer(
+			DockerImageName.parse("rabbitmq:3.7.25-management-alpine"))
+			.withReuse(true);
+
+		public static Map<String, String> getProperties() {
+			Startables.deepStart(Stream.of(rabbit)).join();
+
+			return Map.of(
+				"spring.rabbitmq.host", rabbit.getHost(),
+				"spring.rabbitmq.port", Integer.toString(rabbit.getAmqpPort())
+			);
+		}
+
+		@Override
+		public void initialize(ConfigurableApplicationContext context) {
+			var env = context.getEnvironment();
+			env.getPropertySources().addFirst(new MapPropertySource(
+				"testcontainers",
+				(Map) getProperties()
+			));
+		}
+	}
 
 	@Autowired
 	private RabbitTemplate rabbitTemplate;
